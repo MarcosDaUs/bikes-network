@@ -1,0 +1,21 @@
+.bikesPage {
+  &__modal {
+    :global {
+      .modal {
+        &__mainContainer:has(span .bikeForm) {
+          .modal__actionsContainer {
+            display: none;
+          }
+        }
+
+        &__mainContainer:has(span .map) {
+          min-width: 500px;
+
+          .modal__actionsContainer {
+            display: none;
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,149 @@
+version: '3.8'
+
+services:
+  bikes-rabbitmq:
+    image: rabbitmq:3-management-alpine
+    restart: unless-stopped
+    ports:
+      - $RABBITMQ_LOCAL_PORT:$RABBITMQ_DOCKER_PORT
+      - $RABBITMQ_MANAGEMENT_LOCAL_PORT:$RABBITMQ_MANAGEMENT_DOCKER_PORT
+    volumes:
+      - ~/.docker-conf/rabbitmq/data/:/var/lib/rabbitmq/
+      - ~/.docker-conf/rabbitmq/log/:/var/log/rabbitmq
+    networks:
+      rabbitmqnetwork:
+        aliases:
+          - bikesrabbitmq
+
+  services-api:
+    depends_on:
+      - bikes-rabbitmq
+    build: ./services-api
+    image: marcosdaus/services-api
+    restart: unless-stopped
+    env_file: ./.env
+    ports:
+      - $SERVICES_API_LOCAL_PORT:$SERVICES_API_DOCKER_PORT
+    environment:
+      - PORT=$SERVICES_API_DOCKER_PORT
+      - RABBITMQ_URL=amqp://bikesrabbitmq
+    networks:
+      - rabbitmqnetwork
+
+  bikes-db:
+    image: mongo:latest
+    restart: unless-stopped
+    volumes:
+      - bikesdbvolume:/data/db
+    networks:
+      bikesdbnetwork:
+        aliases:
+          - bikesdatabase
+
+  bikes-api:
+    depends_on:
+      - bikes-db
+      - bikes-rabbitmq
+    build: ./bikes-api
+    image: marcosdaus/bikes-api
+    restart: unless-stopped
+    env_file: ./.env
+    ports:
+      - $BIKES_API_LOCAL_PORT:$BIKES_API_DOCKER_PORT
+    environment:
+      - PORT=$BIKES_API_DOCKER_PORT
+      - RABBITMQ_URL=amqp://bikesrabbitmq
+      - MONGODB_CONNECTION=mongodb://bikesdatabase/bikes
+    networks:
+      - bikesdbnetwork
+      - rabbitmqnetwork
+      - frontendnetwork
+
+  locations-db:
+    image: mongo:latest
+    restart: unless-stopped
+    volumes:
+      - locationsdbvolume:/data/db
+    networks:
+      locationsdbnetwork:
+        aliases:
+          - locationsdatabase
+
+  location-api:
+    depends_on:
+      - locations-db
+      - bikes-rabbitmq
+    build: ./location-api
+    image: marcosdaus/location-api
+    restart: unless-stopped
+    env_file: ./.env
+    ports:
+      - $LOCATION_API_LOCAL_PORT:$LOCATION_API_DOCKER_PORT
+    environment:
+      - PORT=$LOCATION_API_DOCKER_PORT
+      - RABBITMQ_URL=amqp://bikesrabbitmq
+      - MONGODB_CONNECTION=mongodb://locationsdatabase/locations
+    networks:
+      - locationsdbnetwork
+      - rabbitmqnetwork
+      - frontendnetwork
+
+  rents-db:
+    image: mongo:latest
+    restart: unless-stopped
+    volumes:
+      - rentsdbvolume:/data/db
+    networks:
+      rentsdbnetwork:
+        aliases:
+          - rentsdatabase
+
+  rent-api:
+    depends_on:
+      - rents-db
+      - bikes-rabbitmq
+    build: ./rent-api
+    image: marcosdaus/rent-api
+    restart: unless-stopped
+    env_file: ./.env
+    ports:
+      - $RENT_API_LOCAL_PORT:$RENT_API_DOCKER_PORT
+    environment:
+      - PORT=$RENT_API_DOCKER_PORT
+      - RABBITMQ_URL=amqp://bikesrabbitmq
+      - MONGODB_CONNECTION=mongodb://rentsdatabase/rents
+    networks:
+      - rentsdbnetwork
+      - rabbitmqnetwork
+      - frontendnetwork
+
+  bikes-network-frontend:
+    depends_on:
+      - bikes-api
+      - location-api
+    env_file: ./.env
+    restart: unless-stopped
+    build:
+      context: ./frontend
+      args:
+        - REACT_APP_BIKES_API_URL=$CLIENT_BIKES_API_BASE_URL
+        - REACT_APP_SERVICES_API_URL=$CLIENT_SERVICES_API_BASE_URL
+        - REACT_APP_LOCATION_API_URL=$CLIENT_LOCATION_API_BASE_URL
+        - REACT_APP_GOOGLE_SIGN_IN_CLIENT_ID=$GOOGLE_SIGN_IN_CLIENT_ID
+    image: marcosdaus/bikes-network-frontend
+    ports:
+      - $FRONTEND_LOCAL_PORT:$FRONTEND_DOCKER_PORT
+    networks:
+      - frontendnetwork
+
+volumes:
+  bikesdbvolume:
+  locationsdbvolume:
+  rentsdbvolume:
+
+networks:
+  bikesdbnetwork:
+  locationsdbnetwork:
+  rentsdbnetwork:
+  rabbitmqnetwork:
+  frontendnetwork:
